@@ -1,6 +1,6 @@
 //! Config Category HTTP Server
 //!
-//! Manual implementation - cannot use kodegen_mcp_server_http due to circular dependency
+//! Manual implementation - cannot use kodegen_server_http due to circular dependency
 //! (mcp-server-http depends on tools-config::ConfigManager)
 
 use anyhow::Result;

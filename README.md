@@ -226,7 +226,7 @@ cargo check
 
 ## Architecture
 
-This package implements its own HTTP server because it cannot depend on `kodegen_mcp_server_http` (which depends on this package's ConfigManager - circular dependency).
+This package implements its own HTTP server because it cannot depend on `kodegen_server_http` (which depends on this package's ConfigManager - circular dependency).
 
 **Key Components:**
 - **ConfigManager**: Thread-safe configuration with debounced persistence

@@ -152,9 +152,8 @@ impl ServerHandler for ConfigServer {
         request: InitializeRequestParam,
         _context: RequestContext<RoleServer>,
     ) -> Result<InitializeResult, McpError> {
-        if let Err(e) = self.config_manager.set_client_info(request.client_info).await {
-            log::warn!("Failed to store client info: {e:?}");
-        }
+        // Store client info (fire-and-forget, errors logged in background task)
+        self.config_manager.set_client_info(request.client_info).await;
         Ok(self.get_info())
     }
 }

@@ -52,6 +52,9 @@ impl Tool for GetConfigTool {
 
         // Refresh system info with current values (especially memory usage)
         config.system_info = get_system_info();
+        
+        // Populate save error count for observability
+        config.save_error_count = ConfigManager::get_save_error_count();
 
         Ok(json!(config))
     }

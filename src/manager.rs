@@ -30,6 +30,12 @@ static CONFIG_WRITE_COUNT: AtomicUsize = AtomicUsize::new(0);
 /// Start time for calculating write rate
 static CONFIG_WRITE_START: OnceLock<std::time::Instant> = OnceLock::new();
 
+/// Counter for tracking config save failures (for observability)
+/// 
+/// Incremented atomically whenever the background saver fails to write config to disk.
+/// Exposed via `ConfigManager::get_save_error_count()` for monitoring.
+static CONFIG_SAVE_ERRORS: AtomicUsize = AtomicUsize::new(0);
+
 // ============================================================================
 // SERVER CONFIG
 // ============================================================================
@@ -73,6 +79,10 @@ pub struct ServerConfig {
 
     /// System diagnostic information (populated on every `get_config` call)
     pub system_info: SystemInfo,
+
+    /// Total config save failures (populated on get_config call)
+    #[serde(default)]
+    pub save_error_count: usize,
 }
 
 impl Default for ServerConfig {
@@ -111,6 +121,7 @@ impl Default for ServerConfig {
             current_client: None,
             client_history: Vec::new(),
             system_info: get_system_info(),
+            save_error_count: 0,
         }
     }
 }
@@ -427,7 +438,8 @@ impl ConfigManager {
                             };
 
                             if let Err(e) = tokio::fs::write(&config_path, json).await {
-                                log::error!("Failed to save config: {e}");
+                                let error_count = CONFIG_SAVE_ERRORS.fetch_add(1, Ordering::Relaxed) + 1;
+                                log::error!("Failed to save config (total failures: {error_count}): {e}");
                             }
 
                             has_pending_save = false;
@@ -453,9 +465,10 @@ impl ConfigManager {
 
     /// Store client information from MCP initialization
     ///
-    /// # Errors
-    /// Returns error if config cannot be saved to disk
-    pub async fn set_client_info(&self, client_info: ClientInfo) -> Result<(), McpError> {
+    /// Updates in-memory state immediately and queues async save to disk.
+    /// Disk write errors are logged but not propagated (fire-and-forget pattern).
+    /// Use `get_save_error_count()` to check for save failures.
+    pub async fn set_client_info(&self, client_info: ClientInfo) {
         {
             let mut config = self.config.write();
             let now = chrono::Utc::now();
@@ -484,7 +497,6 @@ impl ConfigManager {
 
         // Fire-and-forget debounced save
         let _ = self.save_sender.send(());
-        Ok(())
     }
 
     /// Get current client information
@@ -497,6 +509,15 @@ impl ConfigManager {
     #[must_use]
     pub fn get_client_history(&self) -> Vec<ClientRecord> {
         self.config.read().client_history.clone()
+    }
+
+    /// Get total count of config save failures since server start
+    ///
+    /// This counter tracks background save failures (disk write errors).
+    /// Used for observability and monitoring config persistence issues.
+    #[must_use]
+    pub fn get_save_error_count() -> usize {
+        CONFIG_SAVE_ERRORS.load(Ordering::Relaxed)
     }
 }
 

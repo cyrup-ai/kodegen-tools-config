@@ -153,7 +153,7 @@ impl ServerHandler for ConfigServer {
         _context: RequestContext<RoleServer>,
     ) -> Result<InitializeResult, McpError> {
         // Store client info (fire-and-forget, errors logged in background task)
-        self.config_manager.set_client_info(request.client_info).await;
+        let _ = self.config_manager.set_client_info(request.client_info).await;
         Ok(self.get_info())
     }
 }

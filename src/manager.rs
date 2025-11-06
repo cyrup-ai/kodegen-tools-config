@@ -1,178 +1,12 @@
-use crate::system_info::{ClientInfo, ClientRecord, SystemInfo, get_system_info};
+use crate::config_model::ServerConfig;
+use crate::env_loader::{load_allowed_dirs_from_env, load_denied_dirs_from_env};
+use crate::persistence;
+use crate::system_info::ClientInfo;
 use kodegen_mcp_tool::error::McpError;
 use kodegen_mcp_schema::config::ConfigValue;
 use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::OnceLock;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-// ============================================================================
-// DEFAULT VALUE FUNCTIONS
-// ============================================================================
-
-fn default_fuzzy_search_threshold() -> f64 {
-    0.7
-}
-
-fn default_http_connection_timeout_secs() -> u64 {
-    5
-}
-
-fn default_path_validation_timeout_ms() -> u64 {
-    30_000  // 30 seconds (increased from hardcoded 10s)
-}
-
-// ============================================================================
-// PROFILING INSTRUMENTATION
-// ============================================================================
-
-/// Counter for tracking config write frequency
-static CONFIG_WRITE_COUNT: AtomicUsize = AtomicUsize::new(0);
-
-/// Start time for calculating write rate
-static CONFIG_WRITE_START: OnceLock<std::time::Instant> = OnceLock::new();
-
-/// Counter for tracking config save failures (for observability)
-/// 
-/// Incremented atomically whenever the background saver fails to write config to disk.
-/// Exposed via `ConfigManager::get_save_error_count()` for monitoring.
-static CONFIG_SAVE_ERRORS: AtomicUsize = AtomicUsize::new(0);
-
-// ============================================================================
-// SERVER CONFIG
-// ============================================================================
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerConfig {
-    /// Commands that cannot be executed
-    pub blocked_commands: Vec<String>,
-
-    /// Default shell for command execution
-    pub default_shell: String,
-
-    /// Directories the server can access (empty = full access)
-    pub allowed_directories: Vec<String>,
-
-    /// Directories the server cannot access
-    pub denied_directories: Vec<String>,
-
-    /// Max lines for file read operations
-    pub file_read_line_limit: usize,
-
-    /// Max lines per file write operation
-    pub file_write_line_limit: usize,
-
-    /// Minimum similarity ratio (0.0-1.0) for fuzzy search suggestions
-    /// Default: 0.7 (70% similarity required)
-    #[serde(default = "default_fuzzy_search_threshold")]
-    pub fuzzy_search_threshold: f64,
-
-    /// HTTP connection timeout in seconds (default: 5)
-    #[serde(default = "default_http_connection_timeout_secs")]
-    pub http_connection_timeout_secs: u64,
-
-    /// Path validation timeout in milliseconds (default: 30000ms = 30 seconds)
-    /// Increase for slow network filesystems (NFS, SMB, S3FS)
-    #[serde(default = "default_path_validation_timeout_ms")]
-    pub path_validation_timeout_ms: u64,
-
-    /// Currently connected client (if any)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_client: Option<ClientInfo>,
-
-    /// History of all clients that have connected
-    #[serde(default)]
-    pub client_history: Vec<ClientRecord>,
-
-    /// System diagnostic information (populated on every `get_config` call)
-    pub system_info: SystemInfo,
-
-    /// Total config save failures (populated on get_config call)
-    #[serde(default)]
-    pub save_error_count: usize,
-}
-
-impl Default for ServerConfig {
-    fn default() -> Self {
-        Self {
-            blocked_commands: vec![
-                "rm".to_string(),
-                "rmdir".to_string(),
-                "del".to_string(),
-                "format".to_string(),
-                "dd".to_string(),
-                "shred".to_string(),
-                "sudo".to_string(),
-                "su".to_string(),
-                "passwd".to_string(),
-                "useradd".to_string(),
-                "userdel".to_string(),
-                "chmod".to_string(),
-                "chown".to_string(),
-                "shutdown".to_string(),
-                "reboot".to_string(),
-                "halt".to_string(),
-                "poweroff".to_string(),
-            ],
-            default_shell: if cfg!(windows) {
-                "powershell.exe".to_string()
-            } else {
-                "/bin/sh".to_string()
-            },
-            allowed_directories: Vec::new(),
-            denied_directories: Vec::new(),
-            file_read_line_limit: 1000,
-            file_write_line_limit: 50,
-            fuzzy_search_threshold: 0.7,
-            http_connection_timeout_secs: 5,
-            path_validation_timeout_ms: 30_000,
-            current_client: None,
-            client_history: Vec::new(),
-            system_info: get_system_info(),
-            save_error_count: 0,
-        }
-    }
-}
-
-// ============================================================================
-// ENVIRONMENT VARIABLE LOADING
-// ============================================================================
-
-/// Load allowed directories from `KODEGEN_ALLOWED_DIRS` environment variable
-/// Format: Colon-separated on Unix/macOS, semicolon-separated on Windows
-fn load_allowed_dirs_from_env() -> Vec<String> {
-    let separator = if cfg!(windows) { ';' } else { ':' };
-
-    std::env::var("KODEGEN_ALLOWED_DIRS")
-        .ok()
-        .map(|dirs| {
-            dirs.split(separator)
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// Load denied directories from `KODEGEN_DENIED_DIRS` environment variable
-/// Format: Colon-separated on Unix/macOS, semicolon-separated on Windows
-fn load_denied_dirs_from_env() -> Vec<String> {
-    let separator = if cfg!(windows) { ';' } else { ':' };
-
-    std::env::var("KODEGEN_DENIED_DIRS")
-        .ok()
-        .map(|dirs| {
-            dirs.split(separator)
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-
 
 // ============================================================================
 // CONFIG MANAGER
@@ -199,16 +33,20 @@ impl ConfigManager {
         // Create channel for debounced saves
         let (save_sender, save_receiver) = tokio::sync::mpsc::unbounded_channel();
 
-        let manager = Self {
-            config: Arc::new(RwLock::new(ServerConfig::default())),
-            config_path: config_path.clone(),
-            save_sender,
-        };
+        let config = Arc::new(RwLock::new(ServerConfig::default()));
 
         // Start background saver task
-        manager.start_background_saver(save_receiver);
+        persistence::start_background_saver(
+            Arc::clone(&config),
+            config_path.clone(),
+            save_receiver,
+        );
 
-        manager
+        Self {
+            config,
+            config_path,
+            save_sender,
+        }
     }
 
     /// Initialize configuration from disk and environment variables
@@ -247,7 +85,7 @@ impl ConfigManager {
         }
 
         *self.config.write() = loaded_config;
-        self.save_to_disk().await?;
+        persistence::save_to_disk(&self.config, &self.config_path).await?;
         Ok(())
     }
 
@@ -412,93 +250,6 @@ impl ConfigManager {
         Ok(())
     }
 
-    async fn save_to_disk(&self) -> Result<(), McpError> {
-        // Profiling instrumentation
-        let start_time = CONFIG_WRITE_START.get_or_init(std::time::Instant::now);
-        let count = CONFIG_WRITE_COUNT.fetch_add(1, Ordering::Relaxed);
-
-        if count.is_multiple_of(10) {
-            let elapsed = start_time.elapsed().as_secs();
-            let rate = if elapsed > 0 {
-                f64::from(u32::try_from(count).unwrap_or(u32::MAX)) / elapsed as f64 * 60.0
-            } else {
-                0.0
-            };
-            log::info!("Config writes: {count} total ({rate:.2}/min)");
-        }
-
-        // Existing save logic
-        let json = {
-            let config = self.config.read();
-            serde_json::to_string_pretty(&*config)?
-        };
-        tokio::fs::write(&self.config_path, json).await?;
-        Ok(())
-    }
-
-    /// Background task that debounces config saves
-    ///
-    /// Pattern copied from packages/utils/src/usage_tracker.rs:154-234
-    fn start_background_saver(&self, mut save_receiver: tokio::sync::mpsc::UnboundedReceiver<()>) {
-        let config = Arc::clone(&self.config);
-        let config_path = self.config_path.clone();
-
-        tokio::spawn(async move {
-            // Debounce: wait 300ms after last change
-            const DEBOUNCE_MS: u64 = 300;
-
-            let mut has_pending_save = false;
-            let mut last_save_request = std::time::Instant::now();
-
-            loop {
-                tokio::select! {
-                    // Receive save request from set_value() or set_client_info()
-                    Some(()) = save_receiver.recv() => {
-                        has_pending_save = true;
-                        last_save_request = std::time::Instant::now();
-                    }
-
-                    // Check every 100ms if debounce period has passed
-                    () = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
-                        if has_pending_save && last_save_request.elapsed().as_millis() >= u128::from(DEBOUNCE_MS) {
-                            // Perform batched save
-                            let json = {
-                                let cfg = config.read();
-                                match serde_json::to_string_pretty(&*cfg) {
-                                    Ok(j) => j,
-                                    Err(e) => {
-                                        log::error!("Failed to serialize config: {e}");
-                                        continue;
-                                    }
-                                }
-                            };
-
-                            if let Err(e) = tokio::fs::write(&config_path, json).await {
-                                let error_count = CONFIG_SAVE_ERRORS.fetch_add(1, Ordering::Relaxed) + 1;
-                                log::error!("Failed to save config (total failures: {error_count}): {e}");
-                            }
-
-                            has_pending_save = false;
-                        }
-                    }
-
-                    // Channel closed (server shutdown)
-                    else => {
-                        // Final flush before exit
-                        if has_pending_save {
-                            let json = {
-                                let cfg = config.read();
-                                serde_json::to_string_pretty(&*cfg).unwrap_or_default()
-                            };
-                            let _ = tokio::fs::write(&config_path, json).await;
-                        }
-                        break;
-                    }
-                }
-            }
-        });
-    }
-
     /// Store client information from MCP initialization
     ///
     /// Updates in-memory state immediately and queues async save to disk.
@@ -520,7 +271,7 @@ impl ConfigManager {
                 record.last_seen = now;
             } else {
                 // Add new client record
-                config.client_history.push(ClientRecord {
+                config.client_history.push(crate::system_info::ClientRecord {
                     client_info: client_info.clone(),
                     connected_at: now,
                     last_seen: now,
@@ -543,7 +294,7 @@ impl ConfigManager {
 
     /// Get client connection history
     #[must_use]
-    pub fn get_client_history(&self) -> Vec<ClientRecord> {
+    pub fn get_client_history(&self) -> Vec<crate::system_info::ClientRecord> {
         self.config.read().client_history.clone()
     }
 
@@ -553,7 +304,7 @@ impl ConfigManager {
     /// Used for observability and monitoring config persistence issues.
     #[must_use]
     pub fn get_save_error_count() -> usize {
-        CONFIG_SAVE_ERRORS.load(Ordering::Relaxed)
+        persistence::get_save_error_count()
     }
 }
 

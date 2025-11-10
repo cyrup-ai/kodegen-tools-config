@@ -128,23 +128,26 @@ impl rmcp::ServerHandler for ConfigServer {
     }
 }
 
-/// Start the config tools HTTP server programmatically.
+/// Start the config tools HTTP server programmatically
 ///
 /// This function uses a manual HTTP server implementation because kodegen_server_http
 /// depends on kodegen_tools_config::ConfigManager, creating a circular dependency.
 ///
+/// Returns a ServerHandle for graceful shutdown control.
+/// This function is non-blocking - the server runs in background tasks.
+///
 /// # Arguments
-/// * `addr` - The socket address to bind to
+/// * `addr` - Socket address to bind to
 /// * `tls_cert` - Optional path to TLS certificate file
 /// * `tls_key` - Optional path to TLS private key file
 ///
 /// # Returns
-/// Returns `Ok(())` when the server shuts down gracefully, or an error if startup/shutdown fails.
+/// ServerHandle for graceful shutdown, or error if startup fails
 pub async fn start_server(
     addr: std::net::SocketAddr,
     tls_cert: Option<std::path::PathBuf>,
     tls_key: Option<std::path::PathBuf>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<kodegen_server_http::ServerHandle> {
     use rmcp::handler::server::router::{prompt::PromptRouter, tool::ToolRouter};
     use rmcp::transport::streamable_http_server::{
         StreamableHttpService, StreamableHttpServerConfig,
@@ -251,36 +254,7 @@ pub async fn start_server(
         let _ = server_task.await;
         let _ = completion_tx.send(());
     });
-    
-    // Wait for shutdown signal
-    #[cfg(unix)]
-    {
-        use tokio::signal::unix::{signal, SignalKind};
-        let ctrl_c = tokio::signal::ctrl_c();
-        let mut sigterm = signal(SignalKind::terminate())?;
-        let mut sighup = signal(SignalKind::hangup())?;
-        
-        tokio::select! {
-            _ = ctrl_c => log::debug!("Received SIGINT"),
-            _ = sigterm.recv() => log::debug!("Received SIGTERM"),
-            _ = sighup.recv() => log::debug!("Received SIGHUP"),
-        }
-    }
-    
-    #[cfg(not(unix))]
-    {
-        tokio::signal::ctrl_c().await?;
-    }
-    
-    log::info!("Shutdown signal received");
-    ct.cancel();
-    
-    match tokio::time::timeout(std::time::Duration::from_secs(30), completion_rx).await {
-        Ok(Ok(())) => log::info!("Server shutdown completed"),
-        Ok(Err(_)) => log::warn!("Completion channel closed"),
-        Err(_) => log::warn!("Shutdown timeout"),
-    }
-    
-    log::info!("Config server stopped");
-    Ok(())
+
+    // Return ServerHandle for graceful shutdown control
+    Ok(kodegen_server_http::ServerHandle::new(ct, completion_rx))
 }

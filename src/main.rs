@@ -219,7 +219,7 @@ async fn main() -> Result<()> {
 
     // Build Axum router with CORS
     let router = Router::new()
-        .nest_service("/", http_service)
+        .fallback_service(http_service)
         .layer(CorsLayer::permissive());
 
     let axum_handle = axum_server::Handle::new();

@@ -48,7 +48,7 @@ struct ConfigServer {
     tool_router: ToolRouter<Self>,
     prompt_router: PromptRouter<Self>,
     usage_tracker: UsageTracker,
-    config_manager: kodegen_tools_config::ConfigManager,
+    config_manager: kodegen_config_manager::ConfigManager,
 }
 
 impl ServerHandler for ConfigServer {
@@ -166,7 +166,7 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let instance_id = chrono::Utc::now().format("%Y%m%d-%H%M%S-config").to_string();
 
-    let config_manager = kodegen_tools_config::ConfigManager::new();
+    let config_manager = kodegen_config_manager::ConfigManager::new();
     config_manager.init().await?;
     let usage_tracker = UsageTracker::new(instance_id.clone());
 

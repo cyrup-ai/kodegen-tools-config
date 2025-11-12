@@ -1,6 +1,6 @@
 [package]
 name = "kodegen_tools_config"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2024"
 description = "KODEGEN.ᴀɪ: Memory-efficient, Blazing-Fast, MCP tools for code generation agents."
 authors = ["KODEGEN.ᴀɪ"]
@@ -35,19 +35,11 @@ kodegen_utils = { version = "0.1" }
 kodegen_server_http = { version = "0.1" }
 kodegen_config_manager = { version = "0.1" }
 
-# MCP SDK - for Tool implementation and HTTP server (manual due to circular dependency with mcp-server-http)
+# MCP SDK - for Tool implementation and HTTP server
 rmcp = { version = "0.8", features = ["client", "schemars", "server", "transport-streamable-http-server"]}
 
-# Dependencies for manual HTTP server (can't use mcp-server-http due to circular dependency)
-clap = { version = "4", features = ["derive"] }
-axum = "0.8"
-axum-server = { version = "0.7", features = ["tls-rustls"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace"] }
-tokio-util = "0.7"
-env_logger = "0.11"
+# Logging
 log = "0.4"
-rustls = "0.23"
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

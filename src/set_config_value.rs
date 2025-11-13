@@ -2,8 +2,8 @@ use crate::ConfigManager;
 use kodegen_mcp_tool::Tool;
 use kodegen_mcp_tool::error::McpError;
 use kodegen_mcp_schema::config::{SetConfigValueArgs, SetConfigValuePromptArgs};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::{Value, json};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use serde_json::json;
 
 // ============================================================================
 // TOOL STRUCT
@@ -30,7 +30,7 @@ impl Tool for SetConfigValueTool {
     type PromptArgs = SetConfigValuePromptArgs;
 
     fn name() -> &'static str {
-        "set_config_value"
+        "config_set"
     }
 
     fn description() -> &'static str {
@@ -41,8 +41,8 @@ impl Tool for SetConfigValueTool {
          - blocked_commands (array)\n\
          - default_shell (string)\n\
          - allowed_directories (array of paths)\n\
-         - file_read_line_limit (number, max lines for read_file)\n\
-         - file_write_line_limit (number, max lines per write_file call)\n\n\
+         - file_read_line_limit (number, max lines for fs_read_file)\n\
+         - file_write_line_limit (number, max lines per fs_write_file call)\n\n\
          IMPORTANT: Setting allowed_directories to an empty array ([]) allows full access \n\
          to the entire file system."
     }
@@ -63,19 +63,76 @@ impl Tool for SetConfigValueTool {
         vec![] // No prompt arguments needed
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         // Set the value
         self.config_manager
             .set_value(&args.key, args.value.clone())
             .await?;
-
+        
         // Get updated config
         let updated_config = self.config_manager.get_config();
-
-        Ok(json!({
-            "message": format!("Successfully set {} to {:?}", args.key, args.value),
+        
+        let mut contents = Vec::new();
+        
+        // ========================================
+        // Content[0]: Human-Readable Summary
+        // ========================================
+        
+        // Format the value for display
+        let value_display = match &args.value {
+            crate::ConfigValue::String(s) => format!("\"{}\"", s),
+            crate::ConfigValue::Number(n) => n.to_string(),
+            crate::ConfigValue::Boolean(b) => b.to_string(),
+            crate::ConfigValue::Array(arr) => {
+                if arr.is_empty() {
+                    "[] (empty)".to_string()
+                } else if arr.len() <= 3 {
+                    format!("[{}]", arr.join(", "))
+                } else {
+                    format!("[{}, ... {} total]", arr[0], arr.len())
+                }
+            }
+        };
+        
+        // Contextual messages based on what changed
+        let context_info = match args.key.as_str() {
+            "blocked_commands" => "Commands in this list will be rejected by the terminal tool.",
+            "allowed_directories" => "Only paths within these directories can be accessed (empty = unrestricted).",
+            "default_shell" => "This shell will be used for all command executions.",
+            "file_read_line_limit" => "Maximum lines that can be read from a file in a single operation.",
+            "file_write_line_limit" => "Maximum lines that can be written to a file in a single operation.",
+            _ => "Configuration value updated successfully."
+        };
+        
+        let summary = format!(
+            "✅ Configuration Updated\n\
+             \n\
+             Setting: {}\n\
+             New value: {}\n\
+             \n\
+             {}\n\
+             \n\
+             To view full configuration, use config_get.",
+            args.key,
+            value_display,
+            context_info
+        );
+        contents.push(Content::text(summary));
+        
+        // ========================================
+        // Content[1]: Machine-Parseable JSON
+        // ========================================
+        let metadata = json!({
+            "success": true,
+            "key": args.key,
+            "value": args.value,
             "updated_config": updated_config
-        }))
+        });
+        let json_str = serde_json::to_string_pretty(&metadata)
+            .unwrap_or_else(|_| "{}".to_string());
+        contents.push(Content::text(json_str));
+        
+        Ok(contents)
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
@@ -87,7 +144,7 @@ impl Tool for SetConfigValueTool {
             PromptMessage {
                 role: PromptMessageRole::Assistant,
                 content: PromptMessageContent::text(
-                    "Use set_config_value to update configuration. Examples:\n\n\
+                    "Use config_set to update configuration. Examples:\n\n\
                      Block additional commands:\n\
                      {\"key\": \"blocked_commands\", \"value\": [\"rm\", \"sudo\", \"wget\"]}\n\n\
                      Change shell:\n\

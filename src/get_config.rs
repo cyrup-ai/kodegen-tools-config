@@ -1,7 +1,7 @@
 use crate::{ConfigManager, get_system_info};
 use kodegen_mcp_tool::Tool;
 use kodegen_mcp_tool::error::McpError;
-use kodegen_mcp_schema::config::{GetConfigArgs, GetConfigPromptArgs};
+use kodegen_mcp_schema::config::{GetConfigArgs, GetConfigPromptArgs, CONFIG_GET};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::json;
 
@@ -30,7 +30,7 @@ impl Tool for GetConfigTool {
     type PromptArgs = GetConfigPromptArgs;
 
     fn name() -> &'static str {
-        "config_get"
+        CONFIG_GET
     }
 
     fn description() -> &'static str {

@@ -1,7 +1,7 @@
 use crate::ConfigManager;
 use kodegen_mcp_tool::Tool;
 use kodegen_mcp_tool::error::McpError;
-use kodegen_mcp_schema::config::{SetConfigValueArgs, SetConfigValuePromptArgs};
+use kodegen_mcp_schema::config::{SetConfigValueArgs, SetConfigValuePromptArgs, CONFIG_SET};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::json;
 
@@ -30,7 +30,7 @@ impl Tool for SetConfigValueTool {
     type PromptArgs = SetConfigValuePromptArgs;
 
     fn name() -> &'static str {
-        "config_set"
+        CONFIG_SET
     }
 
     fn description() -> &'static str {

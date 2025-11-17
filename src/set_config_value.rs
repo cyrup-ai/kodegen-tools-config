@@ -94,28 +94,21 @@ impl Tool for SetConfigValueTool {
             }
         };
         
-        // Contextual messages based on what changed
-        let context_info = match args.key.as_str() {
-            "blocked_commands" => "Commands in this list will be rejected by the terminal tool.",
-            "allowed_directories" => "Only paths within these directories can be accessed (empty = unrestricted).",
-            "default_shell" => "This shell will be used for all command executions.",
-            "file_read_line_limit" => "Maximum lines that can be read from a file in a single operation.",
-            "file_write_line_limit" => "Maximum lines that can be written to a file in a single operation.",
-            _ => "Configuration value updated successfully."
+        // Determine the type string from the ConfigValue variant
+        let type_str = match &args.value {
+            crate::ConfigValue::String(_) => "string",
+            crate::ConfigValue::Number(_) => "number",
+            crate::ConfigValue::Boolean(_) => "boolean",
+            crate::ConfigValue::Array(_) => "array",
         };
-        
+
+        // Format the 2-line output using ANSI codes
         let summary = format!(
-            "✅ Configuration Updated\n\
-             \n\
-             Setting: {}\n\
-             New value: {}\n\
-             \n\
-             {}\n\
-             \n\
-             To view full configuration, use config_get.",
+            "\x1b[33m󰒓 Config Updated: {}\x1b[0m\n\
+             󰄬 Value: {} · Type: {}",
             args.key,
             value_display,
-            context_info
+            type_str
         );
         contents.push(Content::text(summary));
         

@@ -49,61 +49,30 @@ impl Tool for GetConfigTool {
 
     async fn execute(&self, _args: Self::Args) -> Result<Vec<Content>, McpError> {
         let mut config = self.config_manager.get_config();
-        
+
         // Refresh system info with current values
         config.system_info = get_system_info();
         config.save_error_count = ConfigManager::get_save_error_count();
-        
+
         let mut contents = Vec::new();
-        
+
         // ========================================
         // Content[0]: Human-Readable Summary
         // ========================================
         let system_info = &config.system_info;
+        // Line 1: Cyan header with gear icon
+        // Line 2: Compact metadata with info icon
         let summary = format!(
-            "⚙️  Server Configuration\n\
-             \n\
-             Security:\n\
-             • Blocked commands: {}\n\
-             • Allowed directories: {}\n\
-             \n\
-             Shell:\n\
-             • Default: {}\n\
-             \n\
-             Limits:\n\
-             • Read limit: {} lines\n\
-             • Write limit: {} lines\n\
-             \n\
-             System:\n\
-             • Platform: {} ({})\n\
-             • OS: {}\n\
-             • Kernel: {}\n\
-             • CPU cores: {}\n\
-             • Memory: {} used, {} available of {} total",
-            if config.blocked_commands.is_empty() {
-                "none".to_string()
-            } else {
-                config.blocked_commands.join(", ")
-            },
-            if config.allowed_directories.is_empty() {
-                "all (unrestricted)".to_string()
-            } else {
-                format!("{} paths", config.allowed_directories.len())
-            },
+            "\x1b[36m󰒓 Config: Complete Server Configuration\x1b[0m\n\
+              Shell: {} · Platform: {} · CPU: {} cores · Memory: {} MB used / {} MB total",
             config.default_shell,
-            config.file_read_line_limit,
-            config.file_write_line_limit,
             system_info.platform,
-            system_info.arch,
-            system_info.os_version,
-            system_info.kernel_version,
             system_info.cpu_count,
             system_info.memory.used_mb,
-            system_info.memory.available_mb,
             system_info.memory.total_mb
         );
         contents.push(Content::text(summary));
-        
+
         // ========================================
         // Content[1]: Machine-Parseable JSON
         // ========================================
@@ -114,7 +83,7 @@ impl Tool for GetConfigTool {
         let json_str = serde_json::to_string_pretty(&metadata)
             .unwrap_or_else(|_| "{}".to_string());
         contents.push(Content::text(json_str));
-        
+
         Ok(contents)
     }
 

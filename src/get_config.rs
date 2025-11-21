@@ -1,5 +1,5 @@
 use crate::{ConfigManager, get_system_info};
-use kodegen_mcp_tool::Tool;
+use kodegen_mcp_tool::{Tool, ToolExecutionContext};
 use kodegen_mcp_tool::error::McpError;
 use kodegen_mcp_schema::config::{GetConfigArgs, GetConfigPromptArgs, CONFIG_GET};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
@@ -47,7 +47,7 @@ impl Tool for GetConfigTool {
         vec![] // No arguments needed
     }
 
-    async fn execute(&self, _args: Self::Args) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, _args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
         let mut config = self.config_manager.get_config();
 
         // Refresh system info with current values

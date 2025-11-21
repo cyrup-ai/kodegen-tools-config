@@ -1,5 +1,5 @@
 use crate::ConfigManager;
-use kodegen_mcp_tool::Tool;
+use kodegen_mcp_tool::{Tool, ToolExecutionContext};
 use kodegen_mcp_tool::error::McpError;
 use kodegen_mcp_schema::config::{SetConfigValueArgs, SetConfigValuePromptArgs, CONFIG_SET};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
@@ -63,7 +63,7 @@ impl Tool for SetConfigValueTool {
         vec![] // No prompt arguments needed
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
         // Set the value
         self.config_manager
             .set_value(&args.key, args.value.clone())

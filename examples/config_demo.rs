@@ -1,7 +1,7 @@
 mod common;
 
 use anyhow::Context;
-use kodegen_mcp_client::{responses::GetConfigResponse, tools};
+use kodegen_mcp_client::responses::GetConfigResponse;
 use serde_json::json;
 use tracing::{error, info};
 
@@ -30,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
     // ========================================================================
     info!("1. Testing get_config with typed response");
     let initial_config: GetConfigResponse = client
-        .call_tool_typed(tools::GET_CONFIG, json!({}))
+        .call_tool_typed("get_config", json!({}))
         .await
         .context("Failed to get initial config")?;
 
@@ -96,7 +96,7 @@ async fn main() -> anyhow::Result<()> {
     info!("2. Testing set_config_value with number (file_read_line_limit)");
     match client
         .call_tool(
-            tools::SET_CONFIG_VALUE,
+            "set_config_value",
             json!({
                 "key": "file_read_line_limit",
                 "value": 2500
@@ -116,7 +116,7 @@ async fn main() -> anyhow::Result<()> {
     // ========================================================================
     info!("3. Verifying file_read_line_limit change persisted");
     let updated_config: GetConfigResponse = client
-        .call_tool_typed(tools::GET_CONFIG, json!({}))
+        .call_tool_typed("get_config", json!({}))
         .await
         .context("Failed to get updated config")?;
 
@@ -138,7 +138,7 @@ async fn main() -> anyhow::Result<()> {
     info!("4. Testing set_config_value with percentage (fuzzy_search_threshold)");
     match client
         .call_tool(
-            tools::SET_CONFIG_VALUE,
+            "set_config_value",
             json!({
                 "key": "fuzzy_search_threshold",
                 "value": 85
@@ -148,7 +148,7 @@ async fn main() -> anyhow::Result<()> {
     {
         Ok(_) => {
             let config: GetConfigResponse = client
-                .call_tool_typed(tools::GET_CONFIG, json!({}))
+                .call_tool_typed("get_config", json!({}))
                 .await
                 .context("Failed to get config after fuzzy threshold update")?;
 
@@ -173,7 +173,7 @@ async fn main() -> anyhow::Result<()> {
     info!("5. Testing set_config_value with array (blocked_commands)");
     match client
         .call_tool(
-            tools::SET_CONFIG_VALUE,
+            "set_config_value",
             json!({
                 "key": "blocked_commands",
                 "value": ["rm", "sudo", "format", "dd", "shutdown"]
@@ -183,7 +183,7 @@ async fn main() -> anyhow::Result<()> {
     {
         Ok(_) => {
             let config: GetConfigResponse = client
-                .call_tool_typed(tools::GET_CONFIG, json!({}))
+                .call_tool_typed("get_config", json!({}))
                 .await
                 .context("Failed to get config after blocked_commands update")?;
 
@@ -201,7 +201,7 @@ async fn main() -> anyhow::Result<()> {
     info!("6. Testing set_config_value with number (http_connection_timeout_secs)");
     match client
         .call_tool(
-            tools::SET_CONFIG_VALUE,
+            "set_config_value",
             json!({
                 "key": "http_connection_timeout_secs",
                 "value": 10
@@ -211,7 +211,7 @@ async fn main() -> anyhow::Result<()> {
     {
         Ok(_) => {
             let config: GetConfigResponse = client
-                .call_tool_typed(tools::GET_CONFIG, json!({}))
+                .call_tool_typed("get_config", json!({}))
                 .await
                 .context("Failed to get config after HTTP timeout update")?;
 
@@ -236,7 +236,7 @@ async fn main() -> anyhow::Result<()> {
     info!("7. Testing set_config_value with invalid key (should error)");
     match client
         .call_tool(
-            tools::SET_CONFIG_VALUE,
+            "set_config_value",
             json!({
                 "key": "nonexistent_key",
                 "value": "should_fail"
@@ -260,7 +260,7 @@ async fn main() -> anyhow::Result<()> {
     info!("8. Testing set_config_value with wrong value type (should error)");
     match client
         .call_tool(
-            tools::SET_CONFIG_VALUE,
+            "set_config_value",
             json!({
                 "key": "file_read_line_limit",
                 "value": "not_a_number"
@@ -278,7 +278,7 @@ async fn main() -> anyhow::Result<()> {
     info!("9. Testing set_config_value with negative number (should error)");
     match client
         .call_tool(
-            tools::SET_CONFIG_VALUE,
+            "set_config_value",
             json!({
                 "key": "file_read_line_limit",
                 "value": -100
@@ -302,7 +302,7 @@ async fn main() -> anyhow::Result<()> {
     info!("\nRestoring original configuration...");
     match client
         .call_tool(
-            tools::SET_CONFIG_VALUE,
+            "set_config_value",
             json!({
                 "key": "file_read_line_limit",
                 "value": original_read_limit

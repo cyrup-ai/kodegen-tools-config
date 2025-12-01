@@ -22,7 +22,7 @@ Configuration management MCP server for AI code generation agents. Part of the [
 
 ## Installation
 
-### From Source
+### From Source 
 
 ```bash
 git clone https://github.com/cyrup-ai/kodegen-tools-config.git

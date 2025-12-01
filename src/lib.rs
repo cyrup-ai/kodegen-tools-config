@@ -61,3 +61,51 @@ pub async fn start_server(
     })
     .await
 }
+
+/// Start config HTTP server using pre-bound listener (TOCTOU-safe)
+///
+/// This variant is used by kodegend to eliminate TOCTOU race conditions
+/// during port cleanup. The listener is already bound to a port.
+///
+/// # Arguments
+/// * `listener` - Pre-bound TcpListener (port already reserved)
+/// * `tls_config` - Optional (cert_path, key_path) for HTTPS
+///
+/// # Returns
+/// ServerHandle for graceful shutdown, or error if startup fails
+pub async fn start_server_with_listener(
+    listener: tokio::net::TcpListener,
+    tls_config: Option<(std::path::PathBuf, std::path::PathBuf)>,
+) -> anyhow::Result<kodegen_server_http::ServerHandle> {
+    use kodegen_server_http::{create_http_server_with_listener, Managers, RouterSet, register_tool};
+    use rmcp::handler::server::router::{prompt::PromptRouter, tool::ToolRouter};
+    use std::time::Duration;
+
+    let shutdown_timeout = Duration::from_secs(30);
+    let session_keep_alive = Duration::ZERO;
+
+    create_http_server_with_listener("config", listener, tls_config, shutdown_timeout, session_keep_alive, |config, _tracker| {
+        let config = config.clone();
+        Box::pin(async move {
+            let tool_router = ToolRouter::new();
+            let prompt_router = PromptRouter::new();
+            let managers = Managers::new();
+
+            // Register config tools
+            let (tool_router, prompt_router) = register_tool(
+                tool_router,
+                prompt_router,
+                GetConfigTool::new(config.clone()),
+            );
+
+            let (tool_router, prompt_router) = register_tool(
+                tool_router,
+                prompt_router,
+                SetConfigValueTool::new(config.clone()),
+            );
+
+            Ok(RouterSet::new(tool_router, prompt_router, managers))
+        })
+    })
+    .await
+}

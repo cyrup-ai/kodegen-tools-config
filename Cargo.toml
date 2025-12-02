@@ -1,6 +1,6 @@
 [package]
 name = "kodegen_tools_config"
-version = "0.5.2"
+version = "0.5.3"
 edition = "2024"
 description = "KODEGEN.ᴀɪ: Memory-efficient, Blazing-Fast, MCP tools for code generation agents."
 authors = ["KODEGEN.ᴀɪ"]
@@ -36,7 +36,7 @@ kodegen_server_http = { version = "0.5" }
 kodegen_config_manager = { version = "0.5" }
 
 # MCP SDK - for Tool implementation and HTTP server
-rmcp = { version = "0.9", features = ["client", "schemars", "server", "transport-streamable-http-server"] }
+rmcp = { version = "0.10", features = ["client", "schemars", "server", "transport-streamable-http-server"] }
 
 # Logging
 log = "0.4"

@@ -1,9 +1,8 @@
 use crate::ConfigManager;
-use kodegen_mcp_tool::{Tool, ToolExecutionContext};
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse};
 use kodegen_mcp_tool::error::McpError;
-use kodegen_mcp_schema::config::{SetConfigValueArgs, SetConfigValuePromptArgs, CONFIG_SET};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::json;
+use kodegen_mcp_schema::config::{SetConfigValueArgs, SetConfigValuePromptArgs, ConfigSetOutput, CONFIG_SET};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 // ============================================================================
 // TOOL STRUCT
@@ -63,20 +62,11 @@ impl Tool for SetConfigValueTool {
         vec![] // No prompt arguments needed
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<ConfigSetOutput>, McpError> {
         // Set the value
         self.config_manager
             .set_value(&args.key, args.value.clone())
             .await?;
-        
-        // Get updated config
-        let updated_config = self.config_manager.get_config();
-        
-        let mut contents = Vec::new();
-        
-        // ========================================
-        // Content[0]: Human-Readable Summary
-        // ========================================
         
         // Format the value for display
         let value_display = match &args.value {
@@ -102,7 +92,7 @@ impl Tool for SetConfigValueTool {
             crate::ConfigValue::Array(_) => "array",
         };
 
-        // Format the 2-line output using ANSI codes
+        // Human-readable summary
         let summary = format!(
             "\x1b[33m󰒓 Config Updated: {}\x1b[0m\n\
              󰄬 Value: {} · Type: {}",
@@ -110,22 +100,17 @@ impl Tool for SetConfigValueTool {
             value_display,
             type_str
         );
-        contents.push(Content::text(summary));
-        
-        // ========================================
-        // Content[1]: Machine-Parseable JSON
-        // ========================================
-        let metadata = json!({
-            "success": true,
-            "key": args.key,
-            "value": args.value,
-            "updated_config": updated_config
-        });
-        let json_str = serde_json::to_string_pretty(&metadata)
-            .unwrap_or_else(|_| "{}".to_string());
-        contents.push(Content::text(json_str));
-        
-        Ok(contents)
+
+        let message = format!("Config key '{}' set to {}", args.key, value_display);
+
+        Ok(ToolResponse::new(
+            summary,
+            ConfigSetOutput {
+                success: true,
+                key: args.key,
+                message,
+            },
+        ))
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

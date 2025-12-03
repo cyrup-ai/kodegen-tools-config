@@ -1,9 +1,8 @@
 use crate::{ConfigManager, get_system_info};
-use kodegen_mcp_tool::{Tool, ToolExecutionContext};
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse};
 use kodegen_mcp_tool::error::McpError;
-use kodegen_mcp_schema::config::{GetConfigArgs, GetConfigPromptArgs, CONFIG_GET};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::json;
+use kodegen_mcp_schema::config::{GetConfigArgs, GetConfigPromptArgs, ConfigGetOutput, CONFIG_GET};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 // ============================================================================
 // TOOL STRUCT
@@ -47,21 +46,15 @@ impl Tool for GetConfigTool {
         vec![] // No arguments needed
     }
 
-    async fn execute(&self, _args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, _args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<ConfigGetOutput>, McpError> {
         let mut config = self.config_manager.get_config();
 
         // Refresh system info with current values
         config.system_info = get_system_info();
         config.save_error_count = ConfigManager::get_save_error_count();
 
-        let mut contents = Vec::new();
-
-        // ========================================
-        // Content[0]: Human-Readable Summary
-        // ========================================
+        // Human-readable summary
         let system_info = &config.system_info;
-        // Line 1: Cyan header with gear icon
-        // Line 2: Compact metadata with info icon
         let summary = format!(
             "\x1b[36m󰒓 Config: Complete Server Configuration\x1b[0m\n\
               Shell: {} · Platform: {} · CPU: {} cores · Memory: {} MB used / {} MB total",
@@ -71,20 +64,18 @@ impl Tool for GetConfigTool {
             system_info.memory.used_mb,
             system_info.memory.total_mb
         );
-        contents.push(Content::text(summary));
 
-        // ========================================
-        // Content[1]: Machine-Parseable JSON
-        // ========================================
-        let metadata = json!({
-            "success": true,
-            "config": config
-        });
-        let json_str = serde_json::to_string_pretty(&metadata)
-            .unwrap_or_else(|_| "{}".to_string());
-        contents.push(Content::text(json_str));
+        // Serialize config to JSON value
+        let config_json = serde_json::to_value(&config)
+            .unwrap_or_else(|_| serde_json::json!({}));
 
-        Ok(contents)
+        Ok(ToolResponse::new(
+            summary,
+            ConfigGetOutput {
+                success: true,
+                config: config_json,
+            },
+        ))
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

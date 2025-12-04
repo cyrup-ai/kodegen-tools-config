@@ -65,15 +65,12 @@ impl Tool for GetConfigTool {
             system_info.memory.total_mb
         );
 
-        // Serialize config to JSON value
-        let config_json = serde_json::to_value(&config)
-            .unwrap_or_else(|_| serde_json::json!({}));
-
+        // Return typed config directly (no JSON serialization needed)
         Ok(ToolResponse::new(
             summary,
             ConfigGetOutput {
                 success: true,
-                config: config_json,
+                config,
             },
         ))
     }

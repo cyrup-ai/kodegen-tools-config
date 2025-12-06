@@ -1,8 +1,7 @@
 use crate::ConfigManager;
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse};
-use kodegen_mcp_tool::error::McpError;
-use kodegen_mcp_schema::config::{SetConfigValueArgs, SetConfigValuePromptArgs, ConfigSetOutput, CONFIG_SET};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_schema::{Tool, ToolExecutionContext, ToolResponse};
+use kodegen_mcp_schema::McpError;
+use kodegen_mcp_schema::config::{SetConfigValueArgs, ConfigSetOutput, SetConfigValuePrompts, CONFIG_SET};
 
 // ============================================================================
 // TOOL STRUCT
@@ -26,7 +25,7 @@ impl SetConfigValueTool {
 
 impl Tool for SetConfigValueTool {
     type Args = SetConfigValueArgs;
-    type PromptArgs = SetConfigValuePromptArgs;
+    type Prompts = SetConfigValuePrompts;
 
     fn name() -> &'static str {
         CONFIG_SET
@@ -58,16 +57,12 @@ impl Tool for SetConfigValueTool {
         true
     }
 
-    fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![] // No prompt arguments needed
-    }
-
     async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<ConfigSetOutput>, McpError> {
         // Set the value
         self.config_manager
             .set_value(&args.key, args.value.clone())
             .await?;
-        
+
         // Format the value for display
         let value_display = match &args.value {
             crate::ConfigValue::String(s) => format!("\"{}\"", s),
@@ -83,7 +78,7 @@ impl Tool for SetConfigValueTool {
                 }
             }
         };
-        
+
         // Determine the type string from the ConfigValue variant
         let type_str = match &args.value {
             crate::ConfigValue::String(_) => "string",
@@ -111,28 +106,5 @@ impl Tool for SetConfigValueTool {
                 message,
             },
         ))
-    }
-
-    async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
-        Ok(vec![
-            PromptMessage {
-                role: PromptMessageRole::User,
-                content: PromptMessageContent::text("How do I update server configuration?"),
-            },
-            PromptMessage {
-                role: PromptMessageRole::Assistant,
-                content: PromptMessageContent::text(
-                    "Use config_set to update configuration. Examples:\n\n\
-                     Block additional commands:\n\
-                     {\"key\": \"blocked_commands\", \"value\": [\"rm\", \"sudo\", \"wget\"]}\n\n\
-                     Change shell:\n\
-                     {\"key\": \"default_shell\", \"value\": \"/bin/bash\"}\n\n\
-                     Restrict directories:\n\
-                     {\"key\": \"allowed_directories\", \"value\": [\"/home/user/projects\"]}\n\n\
-                     Adjust line limits:\n\
-                     {\"key\": \"file_read_line_limit\", \"value\": 2000}",
-                ),
-            },
-        ])
     }
 }

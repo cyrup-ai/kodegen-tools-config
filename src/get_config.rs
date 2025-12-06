@@ -1,8 +1,7 @@
 use crate::{ConfigManager, get_system_info};
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse};
-use kodegen_mcp_tool::error::McpError;
-use kodegen_mcp_schema::config::{GetConfigArgs, GetConfigPromptArgs, ConfigGetOutput, CONFIG_GET};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_schema::{Tool, ToolExecutionContext, ToolResponse};
+use kodegen_mcp_schema::McpError;
+use kodegen_mcp_schema::config::{GetConfigArgs, ConfigGetOutput, ConfigGetPrompts, CONFIG_GET};
 
 // ============================================================================
 // TOOL STRUCT
@@ -26,7 +25,7 @@ impl GetConfigTool {
 
 impl Tool for GetConfigTool {
     type Args = GetConfigArgs;
-    type PromptArgs = GetConfigPromptArgs;
+    type Prompts = ConfigGetPrompts;
 
     fn name() -> &'static str {
         CONFIG_GET
@@ -40,10 +39,6 @@ impl Tool for GetConfigTool {
 
     fn read_only() -> bool {
         true
-    }
-
-    fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![] // No arguments needed
     }
 
     async fn execute(&self, _args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<ConfigGetOutput>, McpError> {
@@ -65,30 +60,16 @@ impl Tool for GetConfigTool {
             system_info.memory.total_mb
         );
 
-        // Return typed config directly (no JSON serialization needed)
+        // Serialize config to JSON value (avoids circular dependency between schema and config-manager)
+        let config_json = serde_json::to_value(&config)
+            .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to serialize config: {}", e)))?;
+
         Ok(ToolResponse::new(
             summary,
             ConfigGetOutput {
                 success: true,
-                config,
+                config: config_json,
             },
         ))
-    }
-
-    async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
-        Ok(vec![
-            PromptMessage {
-                role: PromptMessageRole::User,
-                content: PromptMessageContent::text("How do I check server configuration?"),
-            },
-            PromptMessage {
-                role: PromptMessageRole::Assistant,
-                content: PromptMessageContent::text(
-                    "Use config_get to retrieve the current server configuration. \
-                     This shows blocked commands, allowed directories, shell settings, \
-                     and line limits.",
-                ),
-            },
-        ])
     }
 }

@@ -13,7 +13,7 @@ pub use kodegen_config_manager::{ConfigManager, ConfigValue, ServerConfig, get_s
 /// This function is non-blocking - the server runs in background tasks.
 ///
 /// # Arguments
-/// * `addr` - Socket address to bind to (e.g., "127.0.0.1:30441")
+/// * `addr` - Socket address to bind to (e.g., format!("127.0.0.1:{}", kodegen_config::PORT_CONFIG))
 /// * `tls_cert` - Optional path to TLS certificate file
 /// * `tls_key` - Optional path to TLS private key file
 ///
@@ -24,42 +24,18 @@ pub async fn start_server(
     tls_cert: Option<std::path::PathBuf>,
     tls_key: Option<std::path::PathBuf>,
 ) -> anyhow::Result<kodegen_server_http::ServerHandle> {
-    use kodegen_server_http::{create_http_server, Managers, RouterSet, register_tool};
-    use rmcp::handler::server::router::{prompt::PromptRouter, tool::ToolRouter};
-    use std::time::Duration;
+    // Bind to the address first
+    let listener = tokio::net::TcpListener::bind(addr).await
+        .map_err(|e| anyhow::anyhow!("Failed to bind to {}: {}", addr, e))?;
 
+    // Convert separate cert/key into Option<(cert, key)> tuple
     let tls_config = match (tls_cert, tls_key) {
         (Some(cert), Some(key)) => Some((cert, key)),
         _ => None,
     };
 
-    let shutdown_timeout = Duration::from_secs(30);
-    let session_keep_alive = Duration::ZERO;
-
-    create_http_server("config", addr, tls_config, shutdown_timeout, session_keep_alive, |config, _tracker| {
-        let config = config.clone();
-        Box::pin(async move {
-            let tool_router = ToolRouter::new();
-            let prompt_router = PromptRouter::new();
-            let managers = Managers::new();
-
-            // Register config tools
-            let (tool_router, prompt_router) = register_tool(
-                tool_router,
-                prompt_router,
-                GetConfigTool::new(config.clone()),
-            );
-
-            let (tool_router, prompt_router) = register_tool(
-                tool_router,
-                prompt_router,
-                SetConfigValueTool::new(config.clone()),
-            );
-
-            Ok(RouterSet::new(tool_router, prompt_router, managers))
-        })
-    })
-    .await
+    // Delegate to start_server_with_listener
+    start_server_with_listener(listener, tls_config).await
 }
 
 /// Start config HTTP server using pre-bound listener (TOCTOU-safe)
@@ -77,28 +53,28 @@ pub async fn start_server_with_listener(
     listener: tokio::net::TcpListener,
     tls_config: Option<(std::path::PathBuf, std::path::PathBuf)>,
 ) -> anyhow::Result<kodegen_server_http::ServerHandle> {
-    use kodegen_server_http::{create_http_server_with_listener, Managers, RouterSet, register_tool};
+    use kodegen_server_http::{ServerBuilder, Managers, RouterSet, register_tool};
+    use kodegen_config_manager::ConfigManager;
     use rmcp::handler::server::router::{prompt::PromptRouter, tool::ToolRouter};
-    use std::time::Duration;
 
-    let shutdown_timeout = Duration::from_secs(30);
-    let session_keep_alive = Duration::ZERO;
+    let mut builder = ServerBuilder::new()
+        .category(kodegen_config::CATEGORY_CONFIG)
+        .register_tools(|| async {
+            let config = ConfigManager::new();
+            config.init().await?;
 
-    create_http_server_with_listener("config", listener, tls_config, shutdown_timeout, session_keep_alive, |config, _tracker| {
-        let config = config.clone();
-        Box::pin(async move {
-            let tool_router = ToolRouter::new();
-            let prompt_router = PromptRouter::new();
+            let mut tool_router = ToolRouter::new();
+            let mut prompt_router = PromptRouter::new();
             let managers = Managers::new();
 
             // Register config tools
-            let (tool_router, prompt_router) = register_tool(
+            (tool_router, prompt_router) = register_tool(
                 tool_router,
                 prompt_router,
                 GetConfigTool::new(config.clone()),
             );
 
-            let (tool_router, prompt_router) = register_tool(
+            (tool_router, prompt_router) = register_tool(
                 tool_router,
                 prompt_router,
                 SetConfigValueTool::new(config.clone()),
@@ -106,6 +82,11 @@ pub async fn start_server_with_listener(
 
             Ok(RouterSet::new(tool_router, prompt_router, managers))
         })
-    })
-    .await
+        .with_listener(listener);
+
+    if let Some((cert, key)) = tls_config {
+        builder = builder.with_tls_config(cert, key);
+    }
+
+    builder.serve().await
 }

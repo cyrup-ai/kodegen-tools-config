@@ -3,14 +3,20 @@
 //! Serves configuration tools via HTTP/HTTPS transport using kodegen_server_http.
 
 use anyhow::Result;
-use kodegen_server_http::{run_http_server, Managers, RouterSet, register_tool};
+use kodegen_config::CATEGORY_CONFIG;
+use kodegen_config_manager::ConfigManager;
+use kodegen_server_http::{ServerBuilder, Managers, RouterSet, register_tool};
 use rmcp::handler::server::router::{prompt::PromptRouter, tool::ToolRouter};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    run_http_server("config", |config, _tracker| {
-        let config = config.clone();
-        Box::pin(async move {
+    ServerBuilder::new()
+        .category(CATEGORY_CONFIG)
+        .register_tools(|| async {
+            // Initialize ConfigManager inside the closure
+            let config = ConfigManager::new();
+            config.init().await?;
+
             let tool_router = ToolRouter::new();
             let prompt_router = PromptRouter::new();
             let managers = Managers::new();
@@ -30,5 +36,6 @@ async fn main() -> Result<()> {
 
             Ok(RouterSet::new(tool_router, prompt_router, managers))
         })
-    }).await
+        .run()
+        .await
 }

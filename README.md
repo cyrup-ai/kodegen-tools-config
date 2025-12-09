@@ -11,7 +11,7 @@
 
 Configuration management MCP server for AI code generation agents. Part of the [KODEGEN.ᴀɪ](https://kodegen.ai) ecosystem.
 
-## Features
+## Features 
 
 - 🔧 **Dynamic Configuration Management** - Get and set server configuration via MCP tools
 - 🔒 **Security Controls** - Manage blocked commands, allowed/denied directories

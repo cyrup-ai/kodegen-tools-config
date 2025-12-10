@@ -89,8 +89,8 @@ impl Tool for SetConfigValueTool {
 
         // Human-readable summary
         let summary = format!(
-            "\x1b[33m󰒓 Config Updated: {}\x1b[0m\n\
-             󰄬 Value: {} · Type: {}",
+            "\x1b[33mConfig Updated: {}\x1b[0m\n\
+             Value: {} · Type: {}",
             args.key,
             value_display,
             type_str

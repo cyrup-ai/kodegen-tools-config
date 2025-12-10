@@ -51,7 +51,7 @@ impl Tool for GetConfigTool {
         // Human-readable summary
         let system_info = &config.system_info;
         let summary = format!(
-            "\x1b[36m󰒓 Config: Complete Server Configuration\x1b[0m\n\
+            "\x1b[36mConfig: Complete Server Configuration\x1b[0m\n\
               Shell: {} · Platform: {} · CPU: {} cores · Memory: {} MB used / {} MB total",
             config.default_shell,
             system_info.platform,
